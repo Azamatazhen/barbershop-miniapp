@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Угадай число PRO</title>
+  <style>
+    :root {
+      --bg: #f0f4ff;
+      --text: #222;
+      --primary: #6C63FF;
+      --accent: #F9A826;
+    }
+
+    [data-theme="dark"] {
+      --bg: #1a1a1a;
+      --text: #f5f5f5;
+    }
+
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 30px 20px;
+    }
+
+    .game-box {
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+      padding: 25px;
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+    }
+
+    h1 {
+      color: var(--primary);
+    }
+
+    .meta { margin: 8px 0; }
+    input[type="number"] {
+      padding: 10px;
+      font-size: 1.2em;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+      width: 100px;
+      text-align: center;
+    }
+
+    button {
+      padding: 12px 25px;
+      font-size: 1.1em;
+      margin-top: 10px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+
+    #message {
+      font-size: 1.3em;
+      margin-top: 20px;
+      min-height: 1.4em;
+    }
+
+    #timer {
+      font-weight: bold;
+      font-size: 1.2em;
+      color: var(--accent);
+    }
+
+    .top-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .theme-toggle {
+      cursor: pointer;
+      font-size: 1.2em;
+    }
+
+    .game-over {
+      color: red;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body data-theme="light">
+  <div class="game-box">
+    <div class="top-row">
+      <div class="theme-toggle" onclick="toggleTheme()">🌓</div>
+      <div id="timer">10 сек</div>
+    </div>
+    <h1>🎯 Угадай число</h1>
+
+    <div class="meta" id="level">Уровень: 1 (1–10)</div>
+    <div class="meta" id="score">Очки: 0</div>
+    <div class="meta" id="highscore">Рекорд: 0</div>
+    <div class="meta" id="lives">Жизни: 💖💖💖</div>
+
+    <input type="number" id="guess" placeholder="Число">
+    <button onclick="checkGuess()">Проверить</button>
+
+    <div id="message"></div>
+  </div>
+
+  <script>
+    const tg = window.Telegram?.WebApp || { expand: () => {}, sendData: () => {}, close: () => {} };
+    tg.expand();
+
+    let level = +localStorage.getItem('level') || 1;
+    let score = +localStorage.getItem('score') || 0;
+    let highscore = +localStorage.getItem('highscore') || 0;
+    let max = [10, 20, 50, 100][Math.min(level - 1, 3)];
+    let secret = getRandom(max);
+    let lives = +localStorage.getItem('lives') || 3;
+    let timer, timeLeft = 10;
+    let theme = localStorage.getItem('theme') || 'light';
+
+    document.body.setAttribute('data-theme', theme);
+
+    const sounds = {
+      win: new Audio('https://assets.mixkit.co/sfx/preview/mixkit-achievement-bell-600.mp3'),
+      lose: new Audio('https://assets.mixkit.co/sfx/preview/mixkit-wrong-answer-fail-notification-946.mp3'),
+      gameover: new Audio('https://assets.mixkit.co/sfx/preview/mixkit-losing-bleeps-2026.mp3')
+    };
+
+    function getRandom(max) {
+      return Math.floor(Math.random() * max) + 1;
+    }
+
+    function updateUI() {
+      document.getElementById("level").textContent = `Уровень: ${level} (1–${max})`;
+      document.getElementById("score").textContent = `Очки: ${score}`;
+      document.getElementById("highscore").textContent = `Рекорд: ${highscore}`;
+      document.getElementById("lives").textContent = `Жизни: ${"💖".repeat(lives)}`;
+      document.getElementById("message").textContent = "";
+      document.getElementById("guess").value = "";
+    }
+
+    function startTimer() {
+      clearInterval(timer);
+      timeLeft = 10;
+      document.getElementById("timer").textContent = `${timeLeft} сек`;
+      timer = setInterval(() => {
+        timeLeft--;
+        document.getElementById("timer").textContent = `${timeLeft} сек`;
+        if (timeLeft <= 0) {
+          clearInterval(timer);
+          lives--;
+          sounds.lose.play();
+          if (lives <= 0) return gameOver();
+          save();
+          updateUI();
+          startTimer();
+        }
+      }, 1000);
+    }
+
+    function save() {
+      localStorage.setItem('level', level);
+      localStorage.setItem('score', score);
+      localStorage.setItem('lives', lives);
+      localStorage.setItem('highscore', highscore);
+    }
+
+    function gameOver() {
+      clearInterval(timer);
+      sounds.gameover.play();
+      document.getElementById("message").innerHTML = "💀 <span class='game-over'>Игра окончена!</span>";
+      tg.sendData("lose");
+      localStorage.clear();
+      setTimeout(() => tg.close(), 3000);
+    }
+
+    function nextLevel() {
+      score += 10;
+      if (score > highscore) highscore = score;
+      level++;
+      max = [10, 20, 50, 100][Math.min(level - 1, 3)];
+      secret = getRandom(max);
+      lives = 3;
+      save();
+      updateUI();
+      startTimer();
+    }
+
+    function checkGuess() {
+      const guess = Number(document.getElementById("guess").value);
+      if (!guess) return;
+
+      clearInterval(timer);
+      if (guess === secret) {
+        sounds.win.play();
+        document.getElementById("message").textContent = "🎉 Угадал!";
+        setTimeout(nextLevel, 1000);
+      } else {
+        lives--;
+        sounds.lose.play();
+        if (lives <= 0) return gameOver();
+        document.getElementById("message").textContent = guess < secret ? "🔼 Больше" : "🔽 Меньше";
+        save();
+        updateUI();
+        startTimer();
+      }
+    }
+
+    function toggleTheme() {
+      theme = theme === "light" ? "dark" : "light";
+      document.body.setAttribute('data-theme', theme);
+      localStorage.setItem('theme', theme);
+    }
+
+    updateUI();
+    startTimer();
+  </script>
+</body>
+</html>
